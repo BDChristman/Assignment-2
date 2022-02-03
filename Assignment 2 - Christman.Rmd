@@ -1,0 +1,179 @@
+---
+title: "Assignment 2"
+author: "Brian D. Christman"
+date: "1/31/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(pROC)
+library(margins)
+library(MASS)
+library(nnet)
+library(png)
+library(knitr)
+```
+
+# Question 1
+```{r}
+Data_1 <- read.csv(file.choose(), header=TRUE)
+```
+
+## Part A
+```{r}
+# Tabulate the number and percentage of people who developed CHD
+
+chd_num <- sum(Data_1$chd)
+chd_num
+
+chd_perc <- (chd_num / (length(Data_1$chd))) * 100
+chd_perc
+```
+
+
+## Part B
+```{r}
+# While both glucose and total cholesterol are inexpensive to obtain in our current day, 40 years ago when this study was conducted, these were both expensive tests. A main research question is how much the two more expensive markers add to the predictive ability. To answer this question, construct two ROC curves and AUCs. The first should contain all 12 predictor variables other than glucose and total cholesterol. The second should add glucose and cholesterol to the first model. Do these two variables add substantial predictive ability?
+
+
+#Initial/Unadjusted Logistic Model
+initial <- glm(chd ~ male + age + currentsmoker + bpmeds + prevalentstroke + diabetes + sysbp + diabp + bmi + heartrate, data=Data_1, family="binomial")
+summary(initial)
+
+#Getting predicted values
+initial_prob = initial$fitted.values
+
+# Plot ROC curve and obtain area under the curve
+initial_roc = roc(Data_1$chd[complete.cases(Data_1$male, Data_1$age, Data_1$currentsmoker, Data_1$bpmeds, Data_1$prevalentstroke, Data_1$diabetes, Data_1$sysbp, Data_1$diabp, Data_1$bmi)],initial_prob)
+plot.roc(initial_roc)
+auc(initial_roc)
+```
+
+
+
+```{r}
+#Adjusted Logistic Model
+adjusted <- glm(chd ~ male + age + currentsmoker + bpmeds + prevalentstroke + diabetes + sysbp + diabp + bmi + heartrate + totchol + glucose, data=Data_1, family="binomial")
+summary(adjusted)
+
+#Getting predicted values
+adjusted_prob = adjusted$fitted.values
+
+
+adjusted_roc = roc(Data_1$chd[complete.cases(Data_1$male, Data_1$age, Data_1$currentsmoker, Data_1$bpmeds, Data_1$prevalentstroke, Data_1$diabetes, Data_1$sysbp, Data_1$diabp, Data_1$bmi, Data_1$totchol, Data_1$glucose)],adjusted_prob)
+plot.roc(adjusted_roc)
+auc(adjusted_roc)
+```
+
+Adding glucose and total cholesterol level to the model did not add substantial predictive ability. The ROC curves look approximately the same, and the AUC improved only marginally from 0.7392 to 0.7407 when adjusting the model. While the model is slightly better when including glucose and total cholesterol, there is not a substantial improvement. 
+
+
+## Part C
+```{r}
+# Are goodness-of-fit assumptions satisfied for both models from part (B)?
+
+# Unadjusted GOF Diagnostics
+pchisq(sum(residuals(initial, type = "pearson")^2), df=initial$df.residual, lower.tail=FALSE)
+
+
+# Adjusted GOF Diagnostics
+pchisq(sum(residuals(adjusted, type = "pearson")^2), df=adjusted$df.residual, lower.tail=FALSE)
+```
+Based on the GOF diagnostics performed above (Pearson chi-square test), the GOF assumptions are satisfied for both models as the resulting p-values are both greater than 0.05. 
+
+## Part D
+```{r}
+# Compare the Brier scores for the two models from part (B). Which model has the better predictive performance based upon the Brier score? Is it substantially better?
+
+#Calculating Brier Scores
+brier_unadj = (Data_1$chd[complete.cases(Data_1$male, Data_1$age, Data_1$currentsmoker, Data_1$bpmeds, Data_1$prevalentstroke, Data_1$diabetes, Data_1$sysbp, Data_1$diabp, Data_1$bmi)] - initial_prob)^2
+mean(brier_unadj)
+
+
+
+brier_adj   = (Data_1$chd[complete.cases(Data_1$male, Data_1$age, Data_1$currentsmoker, Data_1$bpmeds, Data_1$prevalentstroke, Data_1$diabetes, Data_1$sysbp, Data_1$diabp, Data_1$bmi, Data_1$totchol, Data_1$glucose)] - adjusted_prob)^2
+mean(brier_adj)
+```
+
+Based on the Brier Scores calculated above, the adjusted model has marginally better predictive performance than the unadjusted model. However the difference is not substantial and the performance is almost exactly the same (0.1151 vs 0.1157). To reiterate, the adjusted model has slightly better predictive performance (indicated by a lower Brier score than the one obtained from the unadjusted model), but the difference is exceptionally small. 
+
+## Part E
+```{r}
+# Fast-forward to our present day where glucose and cholesterol are inexpensive to obtain. Let’s stick with the second model constructed from part (B). Construct a marginal predicted probability plot for CHD risk showing how increases in glucose affect this risk. 
+```
+
+![Graph 1 from STATA](\Users\16109\Documents\Graph1.png)
+
+
+
+# Question 2
+```{r}
+Data_2 <- read.csv(file.choose(), header=TRUE)
+```
+
+## Part A
+```{r}
+# Tabulate the number and percentage of those in each of the cognitive categories.
+Data_2$cogstatus <- as.factor(Data_2$cogstatus)
+frequencies <- table(Data_2$cogstatus)
+percentages <- (frequencies/(length(Data_2$cogstatus))) * 100
+
+frequencies
+percentages
+```
+
+
+## Part B
+```{r}
+# Compare AICs for an ordinal model vs. a multinomial model examining the relationship between cognitive status and walking speed. Make sure both models include all adjusters. Use the better fitting model for the remainder of this assignment.
+
+# Ordinal Logistic Regression
+ologit <- polr(factor(cogstatus) ~ wkspcm + age + male + black + factor(education) + diabetes + stroke , data=Data_2)
+
+
+#Multinomial Logistic Model
+mlogit <- multinom(factor(cogstatus) ~ wkspcm + age + male + black + factor(education) + diabetes + stroke, data=Data_2)
+
+
+#ICs to compare two models	
+AIC(ologit , mlogit)
+```
+
+Based on the AICs for the ordinal logistic regression and multinomial logistic regression models, the better model is the multinomial logistic regression model. This is because its AIC is lower than that calculated for the ordinal logistic regression model.
+
+## Part C
+```{r}
+# Interpret the coefficients for walking speed and previous stroke.
+summary(mlogit)
+```
+For a one-unit increase in  walking speed (cm/s) the log-odds would be expected to decrease by 0.0173 unit for mild cognitive impairment relative to normal cognitive diagnosis, given all other variables in the model are held constant. Similarly, for a one-unit increase in walking speed (cm/s) the log-odds would be expected to decrease by 0.0440 unit for dementia relative to normal cognitive diagnosis, given all other variables in the model are held constant.
+
+The log-odds for individuals with previous stroke relative to individuals without previous stroke are 0.4717 unit higher for mild cognitive impairment relative to normal cognitive diagnosis, given all other variables in the model are held constant. Similarly, the log-odds for individuals with previous stroke relative to individuals without previous stroke are 0.5825 unit higher for dementia relative to normal cognitive diagnosis, given all other variables in the model are held constant.
+
+## Part D
+```{r}
+# Make a plot with walking speed on the x-axis and the model-based probability of each cognitive status on the y-axis to visualize this model. Be sure to include the relevant scatterplot associated with this data
+```
+
+![Graph 2 from STATA](\Users\16109\Documents\Graph2.png)
+
+## Part E
+```{r}
+# Create a marginal probability plot showing how previous stroke affects the probability of belonging to each of the cognitive categories.
+```
+
+![Graph 2 from STATA](\Users\16109\Documents\Graph3.png)
+
+## Part F
+```{r}
+# What are the 3 associated predicted cognitive status probabilities for a 71 year-old black female, with a college degree, not diabetic, no stroke history, and walked 97 cm/s?
+
+preddat = data.frame(wkspcm = 97, age = 71, male = 0, black = 1,  education = factor(2), diabetes = 0, stroke = 0)
+predict(mlogit, preddat, type="probs")
+```
+
